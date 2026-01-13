@@ -8,25 +8,33 @@ const CONFIG = {
   apiUrl: "https://api.hyperliquid.xyz/info",
   wsUrl: "wss://api.hyperliquid.xyz/ws",
 
+  // --- Настройки Telegram ---
+  telegram: {
+    enabled: true, // Включить/выключить отправку
+    botToken: "8222776620:AAHPqgNOk8ZPEAI03ZBfxy0tDtGXoxJDaGE", // Токен от @BotFather
+    chatId: "-1003610905611", // ID канала (например, -100123456789 или @my_channel_name)
+  },
+
   // --- Пороги объема в USD ---
-  defaultThresholdUSD: 500000, // 1 млн $ по умолчанию
+  defaultThresholdUSD: 50000,
   customThresholdsUSD: {
-    BTC: 30000000, // 30 млн $
-    ETH: 20000000, // 20 млн $
-    SOL: 10000000, // 10 млн $
+    BTC: 30000000,
+    ETH: 20000000,
+    SOL: 10000000,
     XRP: 10000000,
-    HYPE: 5000000, // 5 млн $
+    HYPE: 5000000,
+    kPEPE: 1000000,
   },
 
   // --- Оптимизация спама ---
-  maxDistancePercent: 3, // Игнорировать плотности дальше 3% от цены
-  alertCooldownMs: 60000, // Не писать об одной цене чаще чем раз в минуту
-  maxLevelsToScan: 100, // Проверять только первые 100 заявок в стакане
+  maxDistancePercent: 3,
+  alertCooldownMs: 60000,
+  maxLevelsToScan: 100,
 
   // --- Технические настройки ---
-  MAX_SUBS_PER_SOCKET: 80, // Монет на одно соединение
-  SUB_DELAY_MS: 100, // Пауза между подписками во избежание бана
-  RECONNECT_DELAY: 5000, // Пауза при обрыве связи
+  MAX_SUBS_PER_SOCKET: 80,
+  SUB_DELAY_MS: 100,
+  RECONNECT_DELAY: 5000,
 };
 
 // Хранилище для кулдауна уведомлений
@@ -37,7 +45,25 @@ const alertCache = new Map();
 // ==========================================
 
 /**
- * Проверка кулдауна уведомлений (чтобы не спамить одну цену)
+ * Отправка сообщения в Telegram
+ */
+async function sendTelegramAlert(message) {
+  if (!CONFIG.telegram.enabled) return;
+
+  const url = `https://api.telegram.org/bot${CONFIG.telegram.botToken}/sendMessage`;
+  try {
+    await axios.post(url, {
+      chat_id: CONFIG.telegram.chatId,
+      text: message,
+      parse_mode: "Markdown", // Позволяет использовать жирный шрифт
+    });
+  } catch (e) {
+    console.error("❌ Ошибка отправки в Telegram:", e.response?.data?.description || e.message);
+  }
+}
+
+/**
+ * Проверка кулдауна уведомлений
  */
 function shouldAlert(coin, side, price) {
   const key = `${coin}_${side}_${price}`;
@@ -50,7 +76,6 @@ function shouldAlert(coin, side, price) {
 
   alertCache.set(key, now);
 
-  // Очистка старого кэша раз в час
   if (alertCache.size > 2000) {
     for (let [k, v] of alertCache) {
       if (now - v > CONFIG.alertCooldownMs) alertCache.delete(k);
@@ -65,11 +90,7 @@ function shouldAlert(coin, side, price) {
 async function getPerpTickers() {
   try {
     const res = await axios.post(CONFIG.apiUrl, { type: "meta" });
-    const tickers = res.data.universe.map((u) => {
-      console.log(u.name);
-      return u.name;
-    });
-
+    const tickers = res.data.universe.map((u) => u.name);
     console.log(`✅ Метаданные загружены. Всего фьючерсов: ${tickers.length}`);
     return tickers;
   } catch (e) {
@@ -89,14 +110,12 @@ function createSocketShard(coins, shardId) {
   ws.on("open", async () => {
     console.log(`🌐 [Шард ${shardId}] Соединение открыто. Подписка на ${coins.length} монет...`);
 
-    // Пинг для поддержания связи (Heartbeat)
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ method: "ping" }));
       }
     }, 15000);
 
-    // Подписка на стаканы
     for (const coin of coins) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(
@@ -123,14 +142,12 @@ function createSocketShard(coins, shardId) {
     if (message.channel === "l2Book" && message.data) {
       const { coin, levels } = message.data;
 
-      // ЗАЩИТА: Проверяем, что обе стороны стакана существуют и не пусты
       if (!levels || !levels[0] || !levels[1] || levels[0].length === 0 || levels[1].length === 0) {
         return;
       }
 
       const threshold = CONFIG.customThresholdsUSD[coin] || CONFIG.defaultThresholdUSD;
 
-      // Безопасное получение цен лучших Bid/Ask
       const bestBid = parseFloat(levels[0][0].px);
       const bestAsk = parseFloat(levels[1][0].px);
 
@@ -138,12 +155,10 @@ function createSocketShard(coins, shardId) {
 
       const midPrice = (bestBid + bestAsk) / 2;
 
-      // Проходим по Bids (покупки) и Asks (продажи)
       for (let sideIdx = 0; sideIdx < 2; sideIdx++) {
-        const sideName = sideIdx === 0 ? "BUY " : "SELL";
+        const sideName = sideIdx === 0 ? "BUY" : "SELL";
         const sideLevels = levels[sideIdx];
 
-        // Сканируем только верхнюю часть стакана
         const scanDepth = Math.min(sideLevels.length, CONFIG.maxLevelsToScan);
 
         for (let i = 0; i < scanDepth; i++) {
@@ -154,21 +169,29 @@ function createSocketShard(coins, shardId) {
           const sizeBase = parseFloat(level.sz);
           const sizeUSD = price * sizeBase;
 
-          // Фильтр 1: Порог объема
           if (sizeUSD >= threshold) {
-            // Фильтр 2: Дистанция от текущей цены
             const distance = Math.abs((price - midPrice) / midPrice) * 100;
 
             if (distance <= CONFIG.maxDistancePercent) {
-              // Фильтр 3: Кулдаун (анти-спам)
               if (shouldAlert(coin, sideName, level.px)) {
                 const time = new Date().toLocaleTimeString();
+                const volM = (sizeUSD / 1000000).toFixed(1);
+
+                // Вывод в консоль
                 console.log(
-                  `[${time}] 🚨 ${coin.padEnd(6)} | ${sideName} | ` +
-                    `Цена: ${level.px.padEnd(10)} | ` +
-                    `Объем: $${(sizeUSD / 1000000).toFixed(1)}M | ` +
-                    `Дист: ${distance.toFixed(2)}%`
+                  `[${time}] 🚨 ${coin.padEnd(6)} | ${sideName.padEnd(4)} | ` +
+                    `Цена: ${level.px.padEnd(10)} | Объем: $${volM}M | Дист: ${distance.toFixed(2)}%`
                 );
+
+                // Отправка в Telegram
+                const tgMessage =
+                  `🚨 *Крупная плотность!* (${coin})\n` +
+                  `*Сторона:* ${sideName === "BUY" ? "🟢 BUY (Bid)" : "🔴 SELL (Ask)"}\n` +
+                  `*Цена:* \`${level.px}\`\n` +
+                  `*Объем:* \`$${volM}M\`\n` +
+                  `*Дистанция:* \`${distance.toFixed(2)}%\`\n`;
+
+                sendTelegramAlert(tgMessage);
               }
             }
           }
@@ -182,7 +205,7 @@ function createSocketShard(coins, shardId) {
   });
 
   ws.on("close", (code, reason) => {
-    console.log(`🔌 [Шард ${shardId}] Соединение разорвано (Код: ${code}). Реконнект...`);
+    console.log(`🔌 [Шард ${shardId}] Соединение разорвано. Реконнект...`);
     clearInterval(pingInterval);
     setTimeout(() => createSocketShard(coins, shardId), CONFIG.RECONNECT_DELAY);
   });
@@ -193,24 +216,15 @@ function createSocketShard(coins, shardId) {
 // ==========================================
 
 async function main() {
-  console.log("🚀 Скринер фьючерсов Hyperliquid (Оптимизированный) запускается...");
+  console.log("🚀 Скринер с поддержкой Telegram запускается...");
   const allTickers = await getPerpTickers();
 
-  // Разбиваем тикеры на группы (шарды)
   for (let i = 0; i < allTickers.length; i += CONFIG.MAX_SUBS_PER_SOCKET) {
     const shardCoins = allTickers.slice(i, i + CONFIG.MAX_SUBS_PER_SOCKET);
     const shardId = Math.floor(i / CONFIG.MAX_SUBS_PER_SOCKET) + 1;
-
-    // Запуск шарда
     createSocketShard(shardCoins, shardId);
-
-    // Задержка между открытием новых сокетов
     await new Promise((r) => setTimeout(r, 2000));
   }
-
-  console.log(
-    `🔥 Работает ${Math.ceil(allTickers.length / CONFIG.MAX_SUBS_PER_SOCKET)} WebSocket соединений.`
-  );
 }
 
 main();
