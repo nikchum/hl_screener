@@ -9,12 +9,13 @@ const CONFIG = {
   wsUrl: "wss://api.hyperliquid.xyz/ws",
 
   // --- Пороги объема в USD ---
-  defaultThresholdUSD: 3000000, // 4 млн $ по умолчанию
+  defaultThresholdUSD: 500000, // 1 млн $ по умолчанию
   customThresholdsUSD: {
     BTC: 30000000, // 30 млн $
     ETH: 20000000, // 20 млн $
     SOL: 10000000, // 10 млн $
-    HYPE: 3000000, // 5 млн $
+    XRP: 10000000,
+    HYPE: 5000000, // 5 млн $
   },
 
   // --- Оптимизация спама ---
@@ -64,7 +65,11 @@ function shouldAlert(coin, side, price) {
 async function getPerpTickers() {
   try {
     const res = await axios.post(CONFIG.apiUrl, { type: "meta" });
-    const tickers = res.data.universe.map((u) => u.name);
+    const tickers = res.data.universe.map((u) => {
+      console.log(u.name);
+      return u.name;
+    });
+
     console.log(`✅ Метаданные загружены. Всего фьючерсов: ${tickers.length}`);
     return tickers;
   } catch (e) {
