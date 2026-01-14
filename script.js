@@ -35,7 +35,7 @@ const CONFIG = {
 
   // --- Оптимизация спама ---
   maxDistancePercent: 3,
-  alertCooldownMs: 60000,
+  alertCooldownMs: 300000,
   maxLevelsToScan: 100,
 
   // --- Технические настройки ---
