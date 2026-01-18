@@ -29,7 +29,7 @@ const CONFIG = {
     BNB: 10000000, // 10 млн $
     SEI: 5000000, // 5 млн $
     ZEC: 1000000, // 1 млн $
-    LTC: 1000000, // 1 млн $
+    LTC: 2000000, // 2 млн $
     AAVE: 1000000, // 1 млн $
     NEAR: 1000000, // 1 млн $
   },
@@ -130,7 +130,7 @@ function createSocketShard(coins, shardId) {
           JSON.stringify({
             method: "subscribe",
             subscription: { type: "l2Book", coin: coin },
-          })
+          }),
         );
         await new Promise((r) => setTimeout(r, CONFIG.SUB_DELAY_MS));
       }
@@ -188,7 +188,7 @@ function createSocketShard(coins, shardId) {
                 // Вывод в консоль
                 console.log(
                   `[${time}] 🚨 ${coin.padEnd(6)} | ${sideName.padEnd(4)} | ` +
-                    `Цена: ${level.px.padEnd(10)} | Объем: $${volM}M | Дист: ${distance.toFixed(2)}%`
+                    `Цена: ${level.px.padEnd(10)} | Объем: $${volM}M | Дист: ${distance.toFixed(2)}%`,
                 );
 
                 // Отправка в Telegram
