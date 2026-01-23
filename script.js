@@ -193,7 +193,8 @@ function createSocketShard(coins, shardId) {
 
                 // Отправка в Telegram
                 const tgMessage =
-                  `🚨 *Крупная плотность!* (${coin})\n` +
+                  `🟣 *Hyperliquid*\n` +
+                  `*Инструмент:* \`${coin}\`\n` +
                   `*Сторона:* ${sideName === "BUY" ? "🟢 BUY (Bid)" : "🔴 SELL (Ask)"}\n` +
                   `*Цена:* \`${level.px}\`\n` +
                   `*Объем:* \`$${volM}M\`\n` +
