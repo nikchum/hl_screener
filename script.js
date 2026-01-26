@@ -16,7 +16,7 @@ const CONFIG = {
   },
 
   // --- Пороги объема в USD ---
-  defaultThresholdUSD: 500000, // 0.5 млн $
+  defaultThresholdUSD: 100000, // 0.5 млн $
   customThresholdsUSD: {
     BTC: 30000000, // 30 млн $
     ETH: 20000000, // 20 млн $
@@ -196,7 +196,7 @@ function createSocketShard(coins, shardId) {
                   `🟪 *Hyperliquid*\n` +
                   `*Инструмент:* \`${coin}\`\n` +
                   `*Сторона:* ${sideName === "BUY" ? "🟢 BUY (Bid)" : "🔴 SELL (Ask)"}\n` +
-                  `*Цена:* \`${level.px}\`\n` +
+                  `*Цена:* \`${level.px.replace(".", ",")}\`\n` +
                   `*Объем:* \`$${volM}M\`\n` +
                   `*Дистанция:* \`${distance.toFixed(2)}%\`\n`;
 
