@@ -16,7 +16,7 @@ const CONFIG = {
   },
 
   // --- Пороги объема в USD ---
-  defaultThresholdUSD: 100000, // 0.5 млн $
+  defaultThresholdUSD: 500000, // 0.5 млн $
   customThresholdsUSD: {
     BTC: 30000000, // 30 млн $
     ETH: 20000000, // 20 млн $
