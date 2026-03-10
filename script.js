@@ -56,6 +56,108 @@ const alertCache = new Map();
 // 2. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ==========================================
 
+// https://hypurrscan.io/
+// async function getWalletsByPrice(coin, targetPrice) {
+//   const url = `https://testapi.hypurrscan.io/markets/${coin}/orderbook`;
+
+//   try {
+//     // Axios автоматически парсит JSON и возвращает его в свойстве .data
+//     const response = await axios.get(url);
+//     const bookData = response.data;
+
+//     // Проверяем наличие bids и asks, чтобы не возникло ошибки при склеивании
+//     const bids = bookData.bids || [];
+//     const asks = bookData.asks || [];
+
+//     const allOrders = [...bids, ...asks];
+
+//     // Фильтруем по цене и сортируем по объему (от большего к меньшему)
+//     const biggestOrder = allOrders
+//       .filter((order) => Number(order.price) === Number(targetPrice))
+//       .sort((a, b) => Number(b.size) - Number(a.size))[0];
+
+//     if (biggestOrder) {
+//       console.log(`Крупнейший кошелек на цене ${targetPrice}: ${biggestOrder.user}`);
+//       console.log(`Объем ордера: ${biggestOrder.size}`);
+//       return biggestOrder;
+//     } else {
+//       console.log(`На цене ${targetPrice} ордеров не обнаружено.`);
+//     }
+//   } catch (error) {
+//     // В Axios детали ошибки лежат в error.response
+//     if (error.response) {
+//       console.error(`Ошибка API (${error.response.status}):`, error.response.data);
+//     } else {
+//       console.error("Ошибка сети или запроса:", error.message);
+//     }
+//   }
+// }
+
+//https://hyperdash.com/
+async function getWalletsByPrice(coin, targetPrice) {
+  const url = "https://api.hyperdash.com/graphql";
+
+  const data = {
+    operationName: "GetOrderbookSnapshotFiltered",
+    query: `query GetOrderbookSnapshotFiltered($market: String!, $minPrice: Float!, $maxPrice: Float!) {
+    orderbookSnapshotFiltered(market: $market, minPrice: $minPrice, maxPrice: $maxPrice) {
+      address
+      order {
+        coin
+        side
+        limitPx
+        sz
+      }
+    }
+  }`,
+    variables: {
+      market: coin,
+      minPrice: Number(targetPrice),
+      maxPrice: Number(targetPrice),
+    },
+  };
+
+  try {
+    // Axios автоматически парсит JSON и возвращает его в свойстве .data
+    const response = await axios.post(url, data);
+
+    const list = response.data?.data?.orderbookSnapshotFiltered;
+
+    // Если массив пуст, выходим
+    if (!list || list.length === 0) {
+      console.log("Ордеров не найдено");
+      return;
+    }
+
+    // Ищем объект с максимальным sz
+    const biggestOrder = list.reduce((max, current) => {
+      // Преобразуем строки в числа для корректного сравнения
+      const currentSize = parseFloat(current.order.sz);
+      const maxSize = parseFloat(max.order.sz);
+
+      return currentSize > maxSize ? current : max;
+    });
+
+    // Сохраняем результат в переменную в нужном вам формате
+    const result = {
+      user: biggestOrder.address,
+      size: parseFloat(biggestOrder.order.sz),
+    };
+
+    console.log(`Крупнейший кошелек на цене ${targetPrice}: ${result.user}`);
+    console.log(`Объем ордера: ${result.size}`);
+
+    return result;
+  } catch (error) {
+    // В Axios детали ошибки лежат в error.response
+    if (error.response) {
+      console.error(`Ошибка API (${error.response.status}):`, error.response.data);
+    } else {
+      console.error("Ошибка сети или запроса:", error.message);
+    }
+  }
+}
+
 /**
  * Отправка сообщения в Telegram
  */
@@ -141,7 +243,7 @@ function createSocketShard(coins, shardId) {
     }
   });
 
-  ws.on("message", (data) => {
+  ws.on("message", async (data) => {
     let message;
     try {
       message = JSON.parse(data);
@@ -189,6 +291,10 @@ function createSocketShard(coins, shardId) {
                 const time = new Date().toLocaleTimeString();
                 const volM = (sizeUSD / 1000000).toFixed(1);
 
+                const wallet = await getWalletsByPrice(coin, level.px);
+
+                console.log(wallet);
+
                 // Вывод в консоль
                 console.log(
                   `[${time}] 🚨 ${coin.padEnd(6)} | ${sideName.padEnd(4)} | ` +
@@ -202,7 +308,10 @@ function createSocketShard(coins, shardId) {
                   `*Сторона:* ${sideName === "BUY" ? "🟢 BUY (Bid)" : "🔴 SELL (Ask)"}\n` +
                   `*Цена:* \`${level.px.replace(".", ",")}\`\n` +
                   `*Объем:* \`$${volM}M\`\n` +
-                  `*Дистанция:* \`${distance.toFixed(2)}%\`\n`;
+                  `*Дистанция:* \`${distance.toFixed(2)}%\`\n` +
+                  `*Кошелек:* \`${Number(wallet?.size) > Number(sizeBase) / 2 ? wallet?.user : "Не найден"}\`\n`;
+
+                console.log(tgMessage);
 
                 sendTelegramAlert(tgMessage);
               }
